@@ -1,0 +1,318 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Male Voice Translator - Hindi & Omani Arabic</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(226, 232, 240, 0.8);
+        }
+        .loader {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #4f46e5;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .rtl { direction: rtl; text-align: right; }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen pb-12">
+
+    <div class="max-w-4xl mx-auto px-4 pt-8">
+        <!-- Header -->
+        <header class="flex items-center justify-between mb-8 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+            <div class="flex items-center gap-4">
+                <div class="bg-indigo-600 text-white p-3 rounded-xl shadow-lg">
+                    <i class="fa-solid fa-microphone-lines text-2xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-2xl font-bold text-slate-800">Male Voice Translator</h1>
+                    <p class="text-sm text-slate-500 font-medium">English to Hindi & Omani Arabic</p>
+                </div>
+            </div>
+        </header>
+
+        <!-- Language Selector -->
+        <div class="flex justify-center mb-8">
+            <div class="inline-flex p-1 bg-white border border-slate-200 rounded-xl shadow-sm">
+                <button id="btn-hindi" onclick="setLanguage('hindi')" class="px-6 py-2.5 rounded-lg text-sm font-bold transition-all bg-indigo-600 text-white shadow-md">
+                    Hindi (हिन्दी)
+                </button>
+                <button id="btn-arabic" onclick="setLanguage('arabic')" class="px-6 py-2.5 rounded-lg text-sm font-bold transition-all text-slate-500 hover:bg-slate-50">
+                    Omani Arabic (عماني)
+                </button>
+            </div>
+        </div>
+
+        <!-- Main Workspace -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            
+            <!-- English Input -->
+            <div class="glass-card rounded-3xl p-6 flex flex-col h-[400px]">
+                <div class="flex justify-between items-center mb-4">
+                    <span class="text-xs font-bold text-slate-400 uppercase tracking-widest">Input: English</span>
+                    <button onclick="clearText()" class="text-slate-400 hover:text-red-500 transition-colors">
+                        <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                </div>
+                <textarea id="inputText" class="flex-1 w-full bg-transparent text-lg focus:outline-none resize-none placeholder:text-slate-300" placeholder="Type or paste English text..."></textarea>
+                <button id="translateBtn" onclick="handleTranslate()" class="mt-4 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-2xl shadow-lg shadow-indigo-100 transition-all active:scale-95 flex items-center justify-center gap-2">
+                    <span id="translateText">Translate</span>
+                    <div id="translateLoader" class="loader hidden"></div>
+                </button>
+            </div>
+
+            <!-- Result Output -->
+            <div class="glass-card rounded-3xl p-6 flex flex-col h-[400px]">
+                <div class="flex justify-between items-center mb-4">
+                    <span id="targetLangLabel" class="text-xs font-bold text-indigo-400 uppercase tracking-widest">Output: Hindi</span>
+                    <button onclick="copyResult()" class="text-slate-400 hover:text-indigo-500 transition-colors">
+                        <i class="fa-solid fa-copy"></i>
+                    </button>
+                </div>
+                <div id="resultBox" class="flex-1 overflow-y-auto text-2xl font-medium text-slate-800 leading-relaxed">
+                    <span class="text-slate-300 italic text-lg">Your translation will appear here...</span>
+                </div>
+                
+                <!-- Action Buttons -->
+                <div id="actionArea" class="mt-4 flex gap-3 hidden">
+                    <button id="speakBtn" onclick="handleSpeak()" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-4 rounded-2xl transition-all flex items-center justify-center gap-2 active:scale-95">
+                        <i class="fa-solid fa-volume-high"></i>
+                        <span id="speakText">Speak (Male)</span>
+                        <div id="speakLoader" class="loader hidden border-indigo-600 border-t-transparent"></div>
+                    </button>
+                    <a id="downloadBtn" class="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-4 rounded-2xl transition-all flex items-center justify-center gap-2 active:scale-95 shadow-lg shadow-emerald-50">
+                        <i class="fa-solid fa-download"></i>
+                        Download
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="fixed bottom-8 left-1/2 -translate-x-1/2 px-6 py-3 rounded-full shadow-2xl text-white font-medium text-sm hidden z-50"></div>
+
+    <script>
+        const apiKey = ""; // Provided by environment
+        const TRANSLATE_MODEL = "gemini-2.5-flash-preview-09-2025";
+        const TTS_MODEL = "gemini-2.5-flash-preview-tts";
+
+        let currentLang = 'hindi';
+        let translatedTextContent = "";
+        let audioBlob = null;
+
+        const config = {
+            hindi: {
+                name: "Hindi",
+                label: "Output: Hindi",
+                prompt: "Translate to Hindi. Provide ONLY the Hindi text.",
+                voice: "Fenrir", // Deep Male Voice
+                isRtl: false
+            },
+            arabic: {
+                name: "Omani Arabic",
+                label: "Output: Omani Arabic",
+                prompt: "Translate to Omani Arabic dialect. Provide ONLY the Arabic text.",
+                voice: "Fenrir", // Also supports Arabic well
+                isRtl: true
+            }
+        };
+
+        function setLanguage(lang) {
+            currentLang = lang;
+            document.getElementById('btn-hindi').className = lang === 'hindi' ? 'px-6 py-2.5 rounded-lg text-sm font-bold transition-all bg-indigo-600 text-white shadow-md' : 'px-6 py-2.5 rounded-lg text-sm font-bold transition-all text-slate-500 hover:bg-slate-50';
+            document.getElementById('btn-arabic').className = lang === 'arabic' ? 'px-6 py-2.5 rounded-lg text-sm font-bold transition-all bg-indigo-600 text-white shadow-md' : 'px-6 py-2.5 rounded-lg text-sm font-bold transition-all text-slate-500 hover:bg-slate-50';
+            document.getElementById('targetLangLabel').innerText = config[lang].label;
+            
+            const resultBox = document.getElementById('resultBox');
+            if (config[lang].isRtl) {
+                resultBox.classList.add('rtl');
+            } else {
+                resultBox.classList.remove('rtl');
+            }
+            
+            // Clear current results if language changes
+            document.getElementById('actionArea').classList.add('hidden');
+            document.getElementById('resultBox').innerHTML = `<span class="text-slate-300 italic text-lg">Your translation will appear here...</span>`;
+        }
+
+        function showToast(msg, type = 'info') {
+            const toast = document.getElementById('toast');
+            toast.innerText = msg;
+            toast.className = `fixed bottom-8 left-1/2 -translate-x-1/2 px-6 py-3 rounded-full shadow-2xl text-white font-medium text-sm z-50 ${type === 'error' ? 'bg-red-500' : 'bg-indigo-600'}`;
+            toast.classList.remove('hidden');
+            setTimeout(() => toast.classList.add('hidden'), 3000);
+        }
+
+        async function apiCall(url, payload, retries = 5) {
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    if (response.ok) return await response.json();
+                    await new Promise(r => setTimeout(r, Math.pow(2, i) * 1000));
+                } catch (e) {
+                    if (i === retries - 1) throw e;
+                }
+            }
+        }
+
+        async function handleTranslate() {
+            const text = document.getElementById('inputText').value.trim();
+            if (!text) return showToast("Please enter English text", "error");
+
+            const btn = document.getElementById('translateBtn');
+            const loader = document.getElementById('translateLoader');
+            const btnText = document.getElementById('translateText');
+
+            btn.disabled = true;
+            loader.classList.remove('hidden');
+            btnText.classList.add('hidden');
+
+            const payload = {
+                contents: [{ parts: [{ text: `${config[currentLang].prompt}\n\nEnglish: ${text}` }] }]
+            };
+
+            try {
+                const data = await apiCall(`https://generativelanguage.googleapis.com/v1beta/models/${TRANSLATE_MODEL}:generateContent?key=${apiKey}`, payload);
+                translatedTextContent = data.candidates[0].content.parts[0].text.trim();
+                
+                const resultBox = document.getElementById('resultBox');
+                resultBox.innerHTML = `<p class="animate-pulse-once">${translatedTextContent}</p>`;
+                document.getElementById('actionArea').classList.remove('hidden');
+                
+                // Reset download
+                const downloadBtn = document.getElementById('downloadBtn');
+                downloadBtn.removeAttribute('href');
+                downloadBtn.classList.add('opacity-50');
+                audioBlob = null;
+
+            } catch (e) {
+                showToast("Translation failed. Try again.", "error");
+            } finally {
+                btn.disabled = false;
+                loader.classList.add('hidden');
+                btnText.classList.remove('hidden');
+            }
+        }
+
+        async function handleSpeak() {
+            if (!translatedTextContent) return;
+
+            const loader = document.getElementById('speakLoader');
+            const icon = document.querySelector('#speakBtn i');
+            const btn = document.getElementById('speakBtn');
+
+            loader.classList.remove('hidden');
+            icon.classList.add('hidden');
+            btn.disabled = true;
+
+            const payload = {
+                contents: [{ parts: [{ text: `Say in a deep, professional male ${config[currentLang].name} voice: ${translatedTextContent}` }] }],
+                generationConfig: {
+                    responseModalities: ["AUDIO"],
+                    speechConfig: {
+                        voiceConfig: { prebuiltVoiceConfig: { voiceName: config[currentLang].voice } }
+                    }
+                },
+                model: TTS_MODEL
+            };
+
+            try {
+                const result = await apiCall(`https://generativelanguage.googleapis.com/v1beta/models/${TTS_MODEL}:generateContent?key=${apiKey}`, payload);
+                const audioData = result.candidates[0].content.parts[0].inlineData.data;
+                const mimeType = result.candidates[0].content.parts[0].inlineData.mimeType;
+                const sampleRate = parseInt(mimeType.split('rate=')[1]) || 24000;
+
+                // Process PCM to WAV
+                const binaryString = atob(audioData);
+                const len = binaryString.length;
+                const bytes = new Int16Array(len / 2);
+                for (let i = 0; i < len; i += 2) {
+                    bytes[i / 2] = (binaryString.charCodeAt(i + 1) << 8) | binaryString.charCodeAt(i);
+                }
+
+                audioBlob = pcmToWav(bytes, sampleRate);
+                const url = URL.createObjectURL(audioBlob);
+
+                // Play
+                const audio = new Audio(url);
+                audio.play();
+
+                // Setup Download
+                const downloadBtn = document.getElementById('downloadBtn');
+                downloadBtn.href = url;
+                downloadBtn.download = `translation_${currentLang}.wav`;
+                downloadBtn.classList.remove('opacity-50');
+
+                showToast("Playing male voice audio...", "success");
+
+            } catch (e) {
+                showToast("Voice generation failed.", "error");
+            } finally {
+                loader.classList.add('hidden');
+                icon.classList.remove('hidden');
+                btn.disabled = false;
+            }
+        }
+
+        function pcmToWav(pcmData, sampleRate) {
+            const buffer = new ArrayBuffer(44 + pcmData.length * 2);
+            const view = new DataView(buffer);
+            const writeString = (offset, string) => {
+                for (let i = 0; i < string.length; i++) view.setUint8(offset + i, string.charCodeAt(i));
+            };
+            writeString(0, 'RIFF');
+            view.setUint32(4, 32 + pcmData.length * 2, true);
+            writeString(8, 'WAVE');
+            writeString(12, 'fmt ');
+            view.setUint32(16, 16, true);
+            view.setUint16(20, 1, true); // PCM
+            view.setUint16(22, 1, true); // Mono
+            view.setUint32(24, sampleRate, true);
+            view.setUint32(28, sampleRate * 2, true);
+            view.setUint16(32, 2, true); // Block align
+            view.setUint16(34, 16, true); // Bits per sample
+            writeString(36, 'data');
+            view.setUint32(40, pcmData.length * 2, true);
+            for (let i = 0; i < pcmData.length; i++) view.setInt16(44 + i * 2, pcmData[i], true);
+            return new Blob([buffer], { type: 'audio/wav' });
+        }
+
+        function clearText() {
+            document.getElementById('inputText').value = '';
+            document.getElementById('resultBox').innerHTML = `<span class="text-slate-300 italic text-lg">Your translation will appear here...</span>`;
+            document.getElementById('actionArea').classList.add('hidden');
+            translatedTextContent = "";
+        }
+
+        function copyResult() {
+            if (!translatedTextContent) return;
+            const el = document.createElement('textarea');
+            el.value = translatedTextContent;
+            document.body.appendChild(el);
+            el.select();
+            document.execCommand('copy');
+            document.body.removeChild(el);
+            showToast("Translation copied!");
+        }
+    </script>
+</body>
+</html>
+
+```
